@@ -34,6 +34,9 @@ class OrderResponse(BaseModel):
 class OrderListResponse(BaseModel):
     items: list[OrderResponse]
 
+# ... schema lain (ProductItem, OrderResponse, dll)
+
+
 class AdminPendingOrderItem(BaseModel):
     id: str
     user_id: str
