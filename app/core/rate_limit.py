@@ -1,13 +1,13 @@
 # app/core/rate_limit.py
 import time
 import threading
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Request
 
 
 class InMemoryRateLimiter:
     """
-    MVP: in-memory fixed-window limiter.
-    Limitation: hanya efektif untuk 1 process.
+    MVP limiter: efektif untuk 1 proses.
+    Kalau nanti scale multi-worker, pindah Redis.
     """
     def __init__(self):
         self._lock = threading.Lock()
@@ -17,6 +17,8 @@ class InMemoryRateLimiter:
         now = time.time()
         with self._lock:
             count, start = self._buckets.get(key, (0, now))
+
+            # reset window
             if now - start >= window_seconds:
                 count, start = 0, now
 
@@ -33,12 +35,14 @@ class InMemoryRateLimiter:
 limiter = InMemoryRateLimiter()
 
 
-def rate_limit(*, key: str, limit: int, window_seconds: int = 60):
+def rate_limit_dep(*, prefix: str, limit: int, window_seconds: int = 60):
     """
-    Dipakai sebagai Depends().
+    Pakai sebagai Depends().
+    Key otomatis: prefix + IP client.
     """
-    def _dep():
-        limiter.hit(key=key, limit=limit, window_seconds=window_seconds)
+    def _dep(request: Request):
+        ip = request.client.host if request.client else "unknown"
+        limiter.hit(key=f"{prefix}:{ip}", limit=limit, window_seconds=window_seconds)
         return True
 
     return _dep
