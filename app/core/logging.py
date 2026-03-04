@@ -1,18 +1,33 @@
 # app/core/logging.py
+import json
 import logging
 from logging.config import dictConfig
+from datetime import datetime, timezone
 
-from pythonjsonlogger.json import JsonFormatter
 
+class SimpleJsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
 
-class _JsonFormatter(JsonFormatter):
-    """
-    JSON formatter yang menyertakan field standar.
-    """
-    def add_fields(self, log_record, record, message_dict):
-        super().add_fields(log_record, record, message_dict)
-        log_record["level"] = record.levelname
-        log_record["logger"] = record.name
+        reserved = {
+            "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+            "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+            "created", "msecs", "relativeCreated", "thread", "threadName",
+            "processName", "process",
+        }
+        for k, v in record.__dict__.items():
+            if k not in reserved and k not in payload:
+                payload[k] = v
+
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+
+        return json.dumps(payload, ensure_ascii=False)
 
 
 def setup_logging(level: str = "INFO") -> None:
@@ -20,22 +35,11 @@ def setup_logging(level: str = "INFO") -> None:
         {
             "version": 1,
             "disable_existing_loggers": False,
-            "formatters": {
-                "json": {
-                    "()": _JsonFormatter,
-                    "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
-                }
-            },
-            "handlers": {
-                "default": {
-                    "class": "logging.StreamHandler",
-                    "formatter": "json",
-                }
-            },
+            "formatters": {"json": {"()": SimpleJsonFormatter}},
+            "handlers": {"default": {"class": "logging.StreamHandler", "formatter": "json"}},
             "root": {"handlers": ["default"], "level": level},
         }
     )
 
-    # Kurangi noise log dari library
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
